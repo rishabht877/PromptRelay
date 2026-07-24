@@ -149,11 +149,16 @@ func (c *Cache) Store(ctx context.Context, key, model string, embedding []float3
 		return err
 	}
 	fullKey := keyPrefix + key
-	if err := c.rdb.HSet(ctx, fullKey, map[string]any{
-		"model":     model,
-		"embedding": float32sToBytes(embedding),
-		"response":  string(payload),
-	}).Err(); err != nil {
+	fields := map[string]any{
+		"model":    model,
+		"response": string(payload),
+	}
+	// Exact-only routes pass a nil embedding: store the response without a vector
+	// field so the entry is retrievable by exact key but never returned by KNN.
+	if len(embedding) > 0 {
+		fields["embedding"] = float32sToBytes(embedding)
+	}
+	if err := c.rdb.HSet(ctx, fullKey, fields).Err(); err != nil {
 		return err
 	}
 	if ttl > 0 {

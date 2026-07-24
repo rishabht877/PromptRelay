@@ -79,9 +79,13 @@ a non-deterministic request shouldn't reuse a stored answer. Lookup is two tiers
 
 The threshold is deliberately high because embedding similarity is not meaning
 equality: "what is 2+2" and "what is 2+3" are near-identical vectors with different
-correct answers, and negation ("is X safe" vs "is X not safe") reads as similar. The
-exact-hash tier, the high threshold, opt-in routes, low-temperature gating, and a TTL
-are the guards against reusing an answer that shouldn't be reused.
+correct answers, and negation ("is X safe" vs "is X not safe") reads as similar. Since
+no single threshold reliably separates a real paraphrase from a meaning-changing
+near-duplicate, answer-sensitive routes should set `cache.semantic: false` to use the
+**exact-hash tier only** (identical prompts still dedup; similar ones never reuse). The
+exact-hash tier, the per-route semantic toggle, the high threshold, opt-in routes,
+low-temperature gating, and a TTL are the guards against reusing an answer that
+shouldn't be reused.
 
 ## Observability
 

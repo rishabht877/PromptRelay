@@ -60,11 +60,15 @@ func (h *Handler) ChatCompletions(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), h.timeout)
 	defer cancel()
 
-	// Cache is opt-in per route AND limited to low-temperature requests. A high (or
-	// unspecified, defaulting to 1.0) temperature means a non-deterministic answer we
-	// must not reuse.
-	eligible := h.cache != nil && h.embedder != nil && route.Cache.Enabled &&
+	// Caching is opt-in per route AND limited to low-temperature requests. A high
+	// (or unspecified, defaulting to 1.0) temperature means a non-deterministic
+	// answer we must not reuse.
+	eligible := h.cache != nil && route.Cache.Enabled &&
 		req.EffectiveTemperature() <= route.Cache.MaxTemperature
+	// Semantic reuse is a further opt-in. Answer-sensitive routes leave it off and
+	// rely on the exact-hash tier alone, because embedding similarity measures
+	// surface/topic closeness, not answer-equality (e.g. "2+2" vs "2+3").
+	useSemantic := eligible && route.Cache.SemanticEnabled() && h.embedder != nil
 
 	var exactKey string
 	var embedding []float32
@@ -82,24 +86,28 @@ func (h *Handler) ChatCompletions(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Tier 2: semantic search. If embedding fails we can neither search nor
-		// store, so fall through to the provider as an uncacheable request.
-		if emb, err := h.embedder.Embed(ctx, normalized); err != nil {
-			h.log.Warn("embedding failed; serving uncached", "err", err)
-			eligible = false
-		} else {
-			embedding = emb
-			if resp, sim, hit, err := h.cache.SearchSemantic(ctx, req.Model, emb, route.Cache.Threshold); err != nil {
-				h.log.Warn("cache semantic search failed", "err", err)
-			} else if hit {
-				metrics.CacheLookups.WithLabelValues("semantic_hit").Inc()
-				h.log.Info("semantic cache hit", "model", req.Model, "similarity", sim)
-				observe("cache", resp.Model, "ok", "semantic_hit", start)
-				writeJSON(w, http.StatusOK, resp)
-				return
+		// Tier 2: semantic KNN — only for routes that opt in.
+		if useSemantic {
+			if emb, err := h.embedder.Embed(ctx, normalized); err != nil {
+				h.log.Warn("embedding failed; storing exact-only", "err", err)
+			} else {
+				embedding = emb
+				resp, sim, hit, serr := h.cache.SearchSemantic(ctx, req.Model, emb, route.Cache.Threshold)
+				switch {
+				case serr != nil:
+					h.log.Warn("cache semantic search failed", "err", serr)
+				case hit:
+					metrics.CacheLookups.WithLabelValues("semantic_hit").Inc()
+					h.log.Info("semantic cache hit", "model", req.Model, "similarity", sim, "threshold", route.Cache.Threshold)
+					observe("cache", resp.Model, "ok", "semantic_hit", start)
+					writeJSON(w, http.StatusOK, resp)
+					return
+				default:
+					h.log.Info("semantic cache miss", "model", req.Model, "nearest_similarity", sim, "threshold", route.Cache.Threshold)
+				}
 			}
-			metrics.CacheLookups.WithLabelValues("miss").Inc()
 		}
+		metrics.CacheLookups.WithLabelValues("miss").Inc()
 	}
 
 	// Cache miss (or disabled): dispatch to a provider with fallback.
@@ -121,8 +129,9 @@ func (h *Handler) ChatCompletions(w http.ResponseWriter, r *http.Request) {
 	}
 	observe(result.Provider, result.Model, "ok", cacheLabel(eligible), start)
 
-	// Populate the cache for future requests (best effort).
-	if eligible && embedding != nil {
+	// Populate the cache for future requests (best effort). embedding is nil for
+	// exact-only routes, so the entry is stored without a vector field.
+	if eligible {
 		if err := h.cache.Store(ctx, exactKey, req.Model, embedding, result.Response, route.Cache.TTL.Duration); err != nil {
 			h.log.Warn("cache store failed", "err", err)
 		}

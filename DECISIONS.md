@@ -32,7 +32,20 @@ Exact-hash first (free, exact), semantic KNN second (only on an exact miss). Cac
 is opt-in per route and gated to low-temperature requests, because embedding
 similarity is not answer equality (small edits, negation) and non-deterministic
 requests must not reuse a stored answer. The high default similarity threshold (0.95)
-is the main guard.
+is a guard, not a guarantee (see next).
+
+## Answer-sensitive routes cache exact-hash only (`semantic: false`)
+
+The similarity threshold cannot, by itself, make semantic reuse correct. Embedding
+cosine similarity tracks surface/topic closeness, not answer-equality: a meaning-flip
+near-duplicate ("what is 2+2" vs "what is 2+3") and a meaning-preserving paraphrase
+("what is the capital of France" vs "which city is the capital of France") land only
+about 0.05 apart in cosine, so no global threshold cleanly separates "safe to reuse"
+from "must not reuse." The route-level control is therefore the real boundary: set
+`cache.semantic: false` on answer-sensitive routes so they use the exact-hash tier
+only — identical prompts still dedup safely, and similar-but-different prompts always
+get a fresh answer. The semantic (vector KNN) tier defaults on and is meant for
+genuinely paraphrase-tolerant content (FAQs, docs Q&A).
 
 ## Redis COSINE metric → no manual normalization
 

@@ -43,7 +43,7 @@ routes:
     cache:
       enabled: false
 
-  # Example cache-enabled route for stable, deterministic Q&A. Only temperature<=0
+  # Example cache-enabled route for paraphrase-tolerant Q&A. Only temperature<=0
   # requests are cached, and only above a high similarity threshold.
   faq:
     fallback:
@@ -51,7 +51,23 @@ routes:
       - { provider: ollama, model: llama3.2 }
     cache:
       enabled: true
+      semantic: true # vector-KNN reuse tier on (default). See `math` for exact-only.
       threshold: 0.95
+      ttl: 24h
+      max_temperature: 0.0
+
+  # Answer-sensitive route (e.g. math, parameterized lookups): exact-hash caching
+  # only. `semantic: false` disables similarity reuse, because embedding similarity
+  # tracks topic closeness, not answer-equality — near-duplicates like "2+2"/"2+3"
+  # score ~0.90, nearly as high as a real paraphrase (~0.95), and must not collide.
+  # Identical prompts still dedup on the exact tier; threshold is not needed here.
+  math:
+    fallback:
+      - { provider: openai, model: gpt-4o-mini }
+      - { provider: ollama, model: llama3.2 }
+    cache:
+      enabled: true
+      semantic: false
       ttl: 24h
       max_temperature: 0.0
 

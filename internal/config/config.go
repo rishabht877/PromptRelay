@@ -76,11 +76,20 @@ type Target struct {
 // Cache is per-route. It is OFF by default; a route must opt in, and even then only
 // low-temperature (<= MaxTemperature) requests are eligible.
 type Cache struct {
-	Enabled        bool     `yaml:"enabled"`
+	Enabled bool `yaml:"enabled"`
+	// Semantic enables the vector-KNN reuse tier. Defaults to true when omitted.
+	// Set it false on answer-sensitive routes (math, lookups) so they cache on the
+	// exact-hash tier only — embedding similarity measures topic closeness, not
+	// answer-equality, so near-duplicates like "2+2"/"2+3" can otherwise collide.
+	Semantic       *bool    `yaml:"semantic"`
 	Threshold      float64  `yaml:"threshold"`
 	TTL            Duration `yaml:"ttl"`
 	MaxTemperature float64  `yaml:"max_temperature"`
 }
+
+// SemanticEnabled reports whether the semantic (vector KNN) tier is active for this
+// route. It defaults to true when the config key is omitted.
+func (c Cache) SemanticEnabled() bool { return c.Semantic == nil || *c.Semantic }
 
 type Price struct {
 	InputPer1M  float64 `yaml:"input_per_1m"`
@@ -132,8 +141,10 @@ func (c *Config) validate() error {
 				return fmt.Errorf("config: route %q references unknown provider %q", name, t.Provider)
 			}
 		}
-		if r.Cache.Enabled && r.Cache.Threshold <= 0 {
-			return fmt.Errorf("config: route %q has caching enabled but no positive threshold", name)
+		// A threshold is only meaningful for the semantic (KNN) tier. Exact-only
+		// routes (semantic: false) legitimately omit it.
+		if r.Cache.Enabled && r.Cache.SemanticEnabled() && r.Cache.Threshold <= 0 {
+			return fmt.Errorf("config: route %q has semantic caching enabled but no positive threshold", name)
 		}
 	}
 	return nil
