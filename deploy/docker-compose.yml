@@ -1,0 +1,66 @@
+# One-command local stack: gateway + its dependencies + observability.
+#
+# Before first use, pull the models into Ollama (they are NOT bundled):
+#   docker compose -f deploy/docker-compose.yml exec ollama ollama pull llama3.2
+#   docker compose -f deploy/docker-compose.yml exec ollama ollama pull all-minilm
+# A fresh stack with no models pulled will return errors from the Ollama routes and
+# disable the semantic cache until all-minilm is present.
+
+services:
+  redis:
+    image: redis/redis-stack:latest
+    ports:
+      - "6379:6379" # redis
+      - "8001:8001" # RedisInsight UI
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama:/root/.ollama
+
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_AUTH_DISABLE_LOGIN_FORM=true
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+
+  gateway:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      - PROMPTRELAY_CONFIG=/etc/promptrelay/config.yaml
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+    volumes:
+      - ../configs/config.docker.yaml:/etc/promptrelay/config.yaml:ro
+    depends_on:
+      - redis
+      - ollama
+
+volumes:
+  ollama:

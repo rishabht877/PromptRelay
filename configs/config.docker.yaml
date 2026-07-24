@@ -1,0 +1,58 @@
+# PromptRelay configuration for docker-compose (service hostnames instead of
+# localhost). Selected via PROMPTRELAY_CONFIG in the compose file.
+
+server:
+  addr: ":8080"
+  request_timeout: 60s
+
+redis:
+  addr: "redis:6379"
+  index: "promptrelay-cache"
+
+embedding:
+  base_url: "http://ollama:11434"
+  model: "all-minilm"
+  dimension: 384
+
+providers:
+  openai:
+    type: openai
+    base_url: "https://api.openai.com/v1"
+    api_key_env: "OPENAI_API_KEY"
+  anthropic:
+    type: anthropic
+    base_url: "https://api.anthropic.com/v1"
+    api_key_env: "ANTHROPIC_API_KEY"
+  ollama:
+    type: ollama
+    base_url: "http://ollama:11434"
+
+routes:
+  default:
+    fallback:
+      - { provider: openai, model: gpt-4o-mini }
+      - { provider: anthropic, model: claude-haiku-4-5 }
+      - { provider: ollama, model: llama3.2 }
+    cache:
+      enabled: false
+
+  faq:
+    fallback:
+      - { provider: openai, model: gpt-4o-mini }
+      - { provider: ollama, model: llama3.2 }
+    cache:
+      enabled: true
+      threshold: 0.95
+      ttl: 24h
+      max_temperature: 0.0
+
+pricing:
+  gpt-4o-mini:
+    input_per_1m: 0.15
+    output_per_1m: 0.60
+  claude-haiku-4-5:
+    input_per_1m: 1.00
+    output_per_1m: 5.00
+  llama3.2:
+    input_per_1m: 0.0
+    output_per_1m: 0.0

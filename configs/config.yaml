@@ -1,0 +1,68 @@
+# PromptRelay configuration (local / `go run` defaults).
+# Provider model ids and pricing are provider-specific and change over time —
+# treat the values here as illustrative and confirm against current provider docs.
+
+server:
+  addr: ":8080"
+  request_timeout: 60s
+
+redis:
+  addr: "localhost:6379"
+  index: "promptrelay-cache"
+
+# Embedding model for the semantic cache, served locally by Ollama.
+# dimension MUST match the model's output width (all-minilm = 384). Changing the
+# model later requires dropping and rebuilding the Redis vector index.
+embedding:
+  base_url: "http://localhost:11434"
+  model: "all-minilm"
+  dimension: 384
+
+providers:
+  openai:
+    type: openai
+    base_url: "https://api.openai.com/v1"
+    api_key_env: "OPENAI_API_KEY"
+  anthropic:
+    type: anthropic
+    base_url: "https://api.anthropic.com/v1"
+    api_key_env: "ANTHROPIC_API_KEY"
+  ollama:
+    type: ollama
+    base_url: "http://localhost:11434"
+
+# A logical model name maps to an ordered fallback chain. Requests set `model` to
+# one of these route names.
+routes:
+  # General chat. Cloud-first, local Ollama as last-resort fallback. Caching off.
+  default:
+    fallback:
+      - { provider: openai, model: gpt-4o-mini }
+      - { provider: anthropic, model: claude-haiku-4-5 }
+      - { provider: ollama, model: llama3.2 }
+    cache:
+      enabled: false
+
+  # Example cache-enabled route for stable, deterministic Q&A. Only temperature<=0
+  # requests are cached, and only above a high similarity threshold.
+  faq:
+    fallback:
+      - { provider: openai, model: gpt-4o-mini }
+      - { provider: ollama, model: llama3.2 }
+    cache:
+      enabled: true
+      threshold: 0.95
+      ttl: 24h
+      max_temperature: 0.0
+
+# Estimated cost = tokens x rate. USD per 1,000,000 tokens, illustrative only.
+pricing:
+  gpt-4o-mini:
+    input_per_1m: 0.15
+    output_per_1m: 0.60
+  claude-haiku-4-5:
+    input_per_1m: 1.00
+    output_per_1m: 5.00
+  llama3.2:
+    input_per_1m: 0.0
+    output_per_1m: 0.0
