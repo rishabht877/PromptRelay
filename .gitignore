@@ -1,0 +1,21 @@
+# Local build/prep — never committed
+INTERVIEW_LOG.md
+BUILD_PLAN.md
+.claude/
+
+# Secrets & local env
+.env
+.env.*
+!.env.example
+*.local.*
+
+# Build artifacts
+/bin/
+/gateway
+*.out
+*.test
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
