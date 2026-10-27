@@ -1,6 +1,6 @@
 BINARY := bin/gateway
 
-.PHONY: help build run test vet fmt tidy docker-build compose-up compose-down
+.PHONY: help build build-mcp run test vet fmt tidy docker-build compose-up compose-down
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -22,6 +22,9 @@ tidy: ## Tidy modules
 ##@ Build & run
 build: ## Build the gateway binary into bin/
 	CGO_ENABLED=0 go build -trimpath -o $(BINARY) ./cmd/gateway
+
+build-mcp: ## Build the MCP server binary into bin/
+	CGO_ENABLED=0 go build -trimpath -o bin/promptrelay-mcp ./cmd/promptrelay-mcp
 
 run: ## Run the gateway locally (uses configs/config.yaml)
 	go run ./cmd/gateway

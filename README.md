@@ -103,6 +103,34 @@ read from named env vars, never the file), routes and their fallback chains, the
 per-route cache policy, and the pricing table. API keys are supplied via environment
 only.
 
+## MCP server (learning project)
+
+`cmd/promptrelay-mcp` is a small [Model Context Protocol](https://modelcontextprotocol.io)
+server over stdio, added after the gateway was built as a way to learn MCP. It is a
+learning project, not production software. It uses the official Go SDK
+(`modelcontextprotocol/go-sdk` v1.8.0).
+
+| Piece | Kind | What it does |
+|---|---|---|
+| `routes://config` | resource | The providers, route fallback chains and cache policy. Shows the *name* of each API key env var, never its value. |
+| `compare_prompts` | tool, read-only | Embeds two prompts with the same normalization and embedding model the gateway uses, and reports cosine similarity plus whether each route's cache policy would reuse an answer. A prediction from the config: it does not read Redis or call a model. |
+| `chat` | tool, not read-only | Sends one prompt to the **running gateway** over its HTTP API. It calls paid providers when the cache misses, so prompts are capped at 4000 characters and `max_tokens` at 512. |
+
+```bash
+make build-mcp                                    # or: go build -o bin/promptrelay-mcp ./cmd/promptrelay-mcp
+PROMPTRELAY_CONFIG=configs/config.yaml PROMPTRELAY_URL=http://localhost:8080 ./bin/promptrelay-mcp
+```
+
+`chat` needs the gateway running; `compare_prompts` needs the local Ollama embedding
+model. Logs go to stderr because stdout carries the protocol.
+
+What is and isn't verified: the handlers are tested through a real MCP client over an
+in-memory transport (annotations, secret redaction, input caps, error handling), and the
+built binary was driven over stdio with the `2025-11-25` initialize handshake. It has
+not been tested against the newer `2026-07-28` stateless flow or against a particular
+MCP client application, and there is no authentication, since stdio assumes the client
+launched it.
+
 ## Not in v1 (next steps)
 
 - **Streaming** (`stream: true`) — rejected for now; it interacts awkwardly with
